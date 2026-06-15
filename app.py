@@ -42,6 +42,7 @@ HTML = """
     </style>
 </head>
 <body>
+<p>Logged in as: <strong>{{ player_name }}</strong></p>
 
 <h1>Room {{ room_id }}</h1>
 
@@ -135,45 +136,33 @@ HTML = """
 <tr>
     <td>{{ player }}</td>
 
-    <td>
-        {{ score }}
+   <td>
+    {{ "%.1f"|format(score) }}
 
-        <form
-            method="post"
-            action="/change-score/{{ room_id }}"
-            style="display:inline;"
-        >
-            <input
-                type="hidden"
-                name="player"
-                value="{{ player }}">
+    <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
+        <input type="hidden" name="player" value="{{ player }}">
+        <input type="hidden" name="delta" value="1">
+        <button>+1</button>
+    </form>
 
-            <input
-                type="hidden"
-                name="delta"
-                value="1">
+    <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
+        <input type="hidden" name="player" value="{{ player }}">
+        <input type="hidden" name="delta" value="0.5">
+        <button>+0.5</button>
+    </form>
 
-            <button type="submit">+1</button>
-        </form>
+    <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
+        <input type="hidden" name="player" value="{{ player }}">
+        <input type="hidden" name="delta" value="-0.5">
+        <button>-0.5</button>
+    </form>
 
-        <form
-            method="post"
-            action="/change-score/{{ room_id }}"
-            style="display:inline;"
-        >
-            <input
-                type="hidden"
-                name="player"
-                value="{{ player }}">
-
-            <input
-                type="hidden"
-                name="delta"
-                value="-1">
-
-            <button type="submit">-1</button>
-        </form>
-    </td>
+    <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
+        <input type="hidden" name="player" value="{{ player }}">
+        <input type="hidden" name="delta" value="-1">
+        <button>-1</button>
+    </form>
+</td>
 </tr>
 {% endfor %}
     </table>
@@ -236,7 +225,8 @@ def room(room_id):
         revealed=room["revealed"],
         scores=sorted_scores,
         correct_answer=room["correct_answer"],
-        round_no=room["round_no"]
+        round_no=room["round_no"],
+        player_name=session["player_name"]
     )
 
 
@@ -262,7 +252,7 @@ def submit(room_id):
     })
 
     if name not in room["scores"]:
-        room["scores"][name] = 0
+        room["scores"][name] = 0.0
 
     return redirect(f"/room/{room_id}")
 
@@ -297,7 +287,10 @@ def score(room_id):
             ==
             correct_answer.strip().lower()
         ):
-            room["scores"][answer["name"]] += 1
+           room["scores"][answer["name"]] = round(
+    room["scores"][answer["name"]] + 1.0,
+    1
+)
 
     return redirect(f"/room/{room_id}")
 
@@ -326,13 +319,13 @@ def change_score(room_id):
         return "Room not found", 404
 
     player = request.form["player"]
-    delta = int(request.form["delta"])
+    delta = float(request.form["delta"])
 
     if player in room["scores"]:
-        room["scores"][player] = max(
-    0,
-    room["scores"][player] + delta
-)   
+       room["scores"][player] = round(
+    max(0, room["scores"][player] + delta),
+    1
+) 
 
     return redirect(f"/room/{room_id}")
 
@@ -346,7 +339,8 @@ def reset(room_id):
 
     room["answers"] = []
     room["revealed"] = False
-    room["scores"] = {}
+    for player in room["scores"]:
+        room["scores"][player] = 0.0
     room["correct_answer"] = None
     room["round_no"] = 1
 
