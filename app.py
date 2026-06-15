@@ -42,7 +42,16 @@ HTML = """
     </style>
 </head>
 <body>
-<p>Logged in as: <strong>{{ player_name }}</strong></p>
+<p>
+    Logged in as:
+    <strong>{{ player_name }}</strong>
+</p>
+
+<p>
+    Host:
+    <strong>{{ host }}</strong>
+</p>
+
 
 <h1>Room {{ room_id }}</h1>
 
@@ -66,9 +75,11 @@ HTML = """
 <p>{{ count }} guesses submitted</p>
 
 <div class="section">
-    <form method="post" action="/reveal/{{ room_id }}">
-        <button type="submit">Reveal Answers</button>
-    </form>
+   {% if is_host %}
+<form method="post" action="/reveal/{{ room_id }}">
+    <button type="submit">Reveal Answers</button>
+</form>
+{% endif %}
 </div>
 
 {% else %}
@@ -91,7 +102,8 @@ HTML = """
 <div class="section">
     <h3>Enter Correct Answer</h3>
 
-    <form method="post" action="/score/{{ room_id }}">
+    {% if is_host %}
+<form method="post" action="/score/{{ room_id }}">
         <input
             type="text"
             name="correct_answer"
@@ -101,7 +113,8 @@ HTML = """
         <button type="submit">
             Calculate Scores
         </button>
-    </form>
+   </form>
+{% endif %}
 </div>
 
 {% else %}
@@ -112,11 +125,13 @@ HTML = """
 </div>
 
 <div class="section">
-    <form method="post" action="/next-round/{{ room_id }}">
+   {% if is_host %}
+<form method="post" action="/next-round/{{ room_id }}">
         <button type="submit">
             Start Next Round
         </button>
-    </form>
+   </form>
+{% endif %}
 </div>
 
 {% endif %}
@@ -157,17 +172,20 @@ HTML = """
         <button>-0.5</button>
     </form>
 
+    {% if is_host %}
     <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
         <input type="hidden" name="player" value="{{ player }}">
         <input type="hidden" name="delta" value="-1">
         <button>-1</button>
     </form>
+    {% endif %}
 </td>
 </tr>
 {% endfor %}
     </table>
 </div>
 
+{% if is_host %}
 <div class="section">
     <form
         method="post"
@@ -179,26 +197,43 @@ HTML = """
         </button>
     </form>
 </div>
+{% endif %}
 
 </body>
 </html>
 """
 
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def home():
-    room_id = str(uuid.uuid4())[:6].upper()
 
-    rooms[room_id] = {
-        "answers": [],
-        "revealed": False,
-        "scores": {},
-        "correct_answer": None,
-        "round_no": 1
-    }
+    if request.method == "POST":
 
-    return redirect(f"/room/{room_id}")
+        player_name = request.form["name"].strip()
 
+        room_id = str(uuid.uuid4())[:6].upper()
+
+        session["player_name"] = player_name
+
+        rooms[room_id] = {
+            "answers": [],
+            "revealed": False,
+            "scores": {},
+            "correct_answer": None,
+            "round_no": 1,
+            "host": player_name
+        }
+
+        return redirect(f"/room/{room_id}")
+
+    return """
+    <h2>Create Game</h2>
+
+    <form method="post">
+        <input name="name" placeholder="Your Name" required>
+        <button>Create Room</button>
+    </form>
+    """
 
 @app.route("/room/<room_id>")
 def room(room_id):
@@ -208,8 +243,16 @@ def room(room_id):
 
     room = rooms.get(room_id)
 
+
+
     if not room:
         return "Room not found", 404
+
+    is_host = (
+        session.get("player_name")
+        ==
+        room["host"]
+    )
 
     sorted_scores = sorted(
         room["scores"].items(),
@@ -226,7 +269,9 @@ def room(room_id):
         scores=sorted_scores,
         correct_answer=room["correct_answer"],
         round_no=room["round_no"],
-        player_name=session["player_name"]
+        is_host=is_host,
+        player_name=session["player_name"],
+        host=room["host"],
     )
 
 
@@ -262,6 +307,9 @@ def reveal(room_id):
 
     room = rooms.get(room_id)
 
+    if session.get("player_name") != room["host"]:
+        return "Forbidden", 403
+
     if room:
         room["revealed"] = True
 
@@ -272,6 +320,9 @@ def reveal(room_id):
 def score(room_id):
 
     room = rooms.get(room_id)
+
+    if session.get("player_name") != room["host"]:
+        return "Forbidden", 403
 
     if not room:
         return "Room not found", 404
@@ -300,6 +351,9 @@ def next_round(room_id):
 
     room = rooms.get(room_id)
 
+    if session.get("player_name") != room["host"]:
+        return "Forbidden", 403
+
     if not room:
         return "Room not found", 404
 
@@ -314,6 +368,9 @@ def next_round(room_id):
 def change_score(room_id):
 
     room = rooms.get(room_id)
+
+    if session.get("player_name") != room["host"]:
+        return "Forbidden", 403
 
     if not room:
         return "Room not found", 404
@@ -333,6 +390,9 @@ def change_score(room_id):
 def reset(room_id):
 
     room = rooms.get(room_id)
+
+    if session.get("player_name") != room["host"]:
+        return "Forbidden", 403
 
     if not room:
         return "Room not found", 404
