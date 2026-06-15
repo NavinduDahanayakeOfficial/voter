@@ -1,7 +1,10 @@
-from flask import Flask, request, render_template_string, redirect
+from flask import Flask,session, request, render_template_string, redirect
 import uuid
 
+
+
 app = Flask(__name__)
+app.secret_key = "some-random-secret"
 
 rooms = {}
 
@@ -48,12 +51,17 @@ HTML = """
 
 <div class="section">
     <form method="post" action="/submit/{{ room_id }}">
-        <input type="text" name="name" placeholder="Your name" required>
-        <input type="text" name="guess" placeholder="Your guess" required>
-        <button type="submit">Submit Guess</button>
+        <input
+            type="text"
+            name="guess"
+            placeholder="Enter your guess"
+            required>
+
+        <button type="submit">
+            Submit Guess
+        </button>
     </form>
 </div>
-
 <p>{{ count }} guesses submitted</p>
 
 <div class="section">
@@ -167,6 +175,9 @@ def home():
 @app.route("/room/<room_id>")
 def room(room_id):
 
+    if "player_name" not in session:
+        return redirect(f"/login/{room_id}")
+
     room = rooms.get(room_id)
 
     if not room:
@@ -198,7 +209,7 @@ def submit(room_id):
     if not room:
         return "Room not found", 404
 
-    name = request.form["name"].strip()
+    name = session["player_name"]
     guess = request.form["guess"].strip()
 
     # Prevent duplicate submissions
@@ -282,6 +293,22 @@ def reset(room_id):
     room["round_no"] = 1
 
     return redirect(f"/room/{room_id}")
+
+@app.route("/login/<room_id>", methods=["GET", "POST"])
+def login(room_id):
+
+    if request.method == "POST":
+        session["player_name"] = request.form["name"]
+        return redirect(f"/room/{room_id}")
+
+    return """
+    <h2>Enter Name</h2>
+
+    <form method="post">
+        <input name="name" required>
+        <button>Join</button>
+    </form>
+    """
 
 
 if __name__ == "__main__":
