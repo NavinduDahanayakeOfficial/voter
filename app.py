@@ -132,6 +132,18 @@ HTML = """
     </table>
 </div>
 
+<div class="section">
+    <form
+        method="post"
+        action="/reset/{{ room_id }}"
+        onsubmit="return confirm('Reset the entire game?');"
+    >
+        <button type="submit">
+            Reset Entire Game
+        </button>
+    </form>
+</div>
+
 </body>
 </html>
 """
@@ -252,6 +264,22 @@ def next_round(room_id):
     room["revealed"] = False
     room["correct_answer"] = None
     room["round_no"] += 1
+
+    return redirect(f"/room/{room_id}")
+
+@app.route("/reset/<room_id>", methods=["POST"])
+def reset(room_id):
+
+    room = rooms.get(room_id)
+
+    if not room:
+        return "Room not found", 404
+
+    room["answers"] = []
+    room["revealed"] = False
+    room["scores"] = {}
+    room["correct_answer"] = None
+    room["round_no"] = 1
 
     return redirect(f"/room/{room_id}")
 
