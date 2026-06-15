@@ -131,12 +131,51 @@ HTML = """
             <th>Score</th>
         </tr>
 
-        {% for player, score in scores %}
-        <tr>
-            <td>{{ player }}</td>
-            <td>{{ score }}</td>
-        </tr>
-        {% endfor %}
+       {% for player, score in scores %}
+<tr>
+    <td>{{ player }}</td>
+
+    <td>
+        {{ score }}
+
+        <form
+            method="post"
+            action="/change-score/{{ room_id }}"
+            style="display:inline;"
+        >
+            <input
+                type="hidden"
+                name="player"
+                value="{{ player }}">
+
+            <input
+                type="hidden"
+                name="delta"
+                value="1">
+
+            <button type="submit">+1</button>
+        </form>
+
+        <form
+            method="post"
+            action="/change-score/{{ room_id }}"
+            style="display:inline;"
+        >
+            <input
+                type="hidden"
+                name="player"
+                value="{{ player }}">
+
+            <input
+                type="hidden"
+                name="delta"
+                value="-1">
+
+            <button type="submit">-1</button>
+        </form>
+    </td>
+</tr>
+{% endfor %}
     </table>
 </div>
 
@@ -275,6 +314,25 @@ def next_round(room_id):
     room["revealed"] = False
     room["correct_answer"] = None
     room["round_no"] += 1
+
+    return redirect(f"/room/{room_id}")
+
+@app.route("/change-score/<room_id>", methods=["POST"])
+def change_score(room_id):
+
+    room = rooms.get(room_id)
+
+    if not room:
+        return "Room not found", 404
+
+    player = request.form["player"]
+    delta = int(request.form["delta"])
+
+    if player in room["scores"]:
+        room["scores"][player] = max(
+    0,
+    room["scores"][player] + delta
+)   
 
     return redirect(f"/room/{room_id}")
 
