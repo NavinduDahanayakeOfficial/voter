@@ -526,24 +526,11 @@ def score(room_id):
                 correct_answer
             )
 
-            semantic = semantic_similarity(
-                guess,
-                correct_answer
-            )
 
             # Strong fuzzy match
-            if fuzzy >= 0.85:
+            if fuzzy >= 0.75:
                 points = 0.5
-
-            # Semantic match
-            elif semantic >= 0.80:
-                points = 0.75
-
-            elif semantic >= 0.70:
-                points = 0.5
-
-            elif semantic >= 0.60:
-                points = 0.25
+        
 
         room["scores"][answer["name"]] = round(
             room["scores"][answer["name"]] + points,
