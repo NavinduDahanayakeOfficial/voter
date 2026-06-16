@@ -599,8 +599,8 @@ def score(room_id):
             )
 
             # Strong fuzzy match
-            if fuzzy >= 0.75:
-                points = 0.5
+            if fuzzy >= 0.85:
+                points = 1
         
 
         room["scores"][answer["name"]] = round(
