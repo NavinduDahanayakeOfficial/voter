@@ -1,5 +1,6 @@
 from flask import Flask,session, request, render_template_string, redirect
 import uuid
+import random
 
 from difflib import SequenceMatcher
 
@@ -145,10 +146,58 @@ tr:nth-child(even) {
 .center {
     text-align: center;
 }
+.tooltip {
+    position: relative;
+    display: inline-block;
+    cursor: help;
+    margin-left: 5px;
+}
+
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 250px;
+
+    background-color: #222;
+    color: white;
+    text-align: left;
+
+    border-radius: 8px;
+    padding: 10px;
+
+    position: absolute;
+    z-index: 1;
+
+    bottom: 125%;
+    left: 50%;
+    margin-left: -125px;
+
+    opacity: 0;
+    transition: opacity 0.3s;
+
+    font-size: 14px;
+}
+
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
     </style>
 </head>
 <body>
 <div class="container">
+
+{% if gamble_message %}
+<div
+    style="
+        padding:10px;
+        background:#222;
+        color:white;
+        border-radius:8px;
+        margin-bottom:15px;
+    ">
+    {{ gamble_message }}
+</div>
+{% endif %}
 
 
 <div class="card center">
@@ -309,6 +358,27 @@ tr:nth-child(even) {
 
     <td>
         {{ "%.1f"|format(score) }}
+
+        {% if player == player_name %}
+<form method="post"
+      action="/gamble/{{ room_id }}"
+      style="display:inline;">
+
+    <button
+        onclick="return confirm('Double or Nothing?');">
+        🎲 Gamble
+    </button>
+
+    <span class="tooltip">
+        ℹ️
+        <span class="tooltiptext">
+            Double or Nothing!<br>
+            50% chance to DOUBLE your score.<br>
+            50% chance to lose ALL your points.
+        </span>
+    </span>
+</form>
+{% endif %}
     </td>
 
     <td>
@@ -396,7 +466,8 @@ def home():
     "correct_answer": None,
     "round_no": 1,
     "host": player_name,
-    "last_results": []
+    "last_results": [],
+     "gamble_message": ""
 }
 
         return redirect(f"/room/{room_id}")
@@ -448,6 +519,7 @@ def room(room_id):
         player_name=session["player_name"],
         host=room["host"],
         last_results=room["last_results"],
+        gamble_message=room.get("gamble_message", "")
     )
 
 
@@ -525,7 +597,6 @@ def score(room_id):
                 guess,
                 correct_answer
             )
-
 
             # Strong fuzzy match
             if fuzzy >= 0.75:
@@ -621,6 +692,47 @@ def login(room_id):
     </form>
     """
 
+@app.route("/gamble/<room_id>", methods=["POST"])
+def gamble(room_id):
+
+    room = rooms.get(room_id)
+
+    if not room:
+        return "Room not found", 404
+
+    player = session.get("player_name")
+
+    if player not in room["scores"]:
+        return redirect(f"/room/{room_id}")
+
+    current_score = room["scores"][player]
+
+    if current_score <= 0:
+        room["gamble_message"] = (
+            f"{player} tried to gamble with 0 points."
+        )
+        return redirect(f"/room/{room_id}")
+
+    won = random.choice([True, False])
+
+    if won:
+        room["scores"][player] = round(
+            current_score * 2,
+            1
+        )
+
+        room["gamble_message"] = (
+            f"🎉 {player} doubled their score!"
+        )
+
+    else:
+        room["scores"][player] = 0.0
+
+        room["gamble_message"] = (
+            f"💀 {player} lost everything!"
+        )
+
+    return redirect(f"/room/{room_id}")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
