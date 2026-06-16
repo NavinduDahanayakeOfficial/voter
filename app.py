@@ -1,12 +1,18 @@
 from flask import Flask,session, request, render_template_string, redirect
 import uuid
 
+from difflib import SequenceMatcher
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
 
 
 app = Flask(__name__)
 app.secret_key = "some-random-secret"
 
 rooms = {}
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
 HTML = """
 <!DOCTYPE html>
@@ -15,59 +21,176 @@ HTML = """
     <title>Guess Game</title>
     <style>
         body {
-            font-family: Arial;
-            max-width: 800px;
-            margin: auto;
-            padding: 20px;
-        }
+    font-family: Inter, Arial, sans-serif;
+    background: #0f172a;
+    color: #f8fafc;
+    margin: 0;
+    padding: 30px;
+}
 
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 20px;
-        }
+.container {
+    max-width: 900px;
+    margin: auto;
+}
 
-        th, td {
-            border: 1px solid #ccc;
-            padding: 8px;
-        }
+.card {
+    background: #1e293b;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.25);
+}
 
-        th {
-            background: #f5f5f5;
-        }
+h1 {
+    margin: 0;
+    font-size: 2rem;
+}
 
-        .section {
-            margin-top: 25px;
-        }
+.room-code {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #38bdf8;
+}
+
+.host-badge {
+    background: #f59e0b;
+    color: black;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.player-badge {
+    background: #22c55e;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    display: inline-block;
+}
+
+input {
+    width: 100%;
+    padding: 12px;
+    margin-top: 10px;
+    border-radius: 10px;
+    border: none;
+    background: #334155;
+    color: white;
+    box-sizing: border-box;
+}
+
+button {
+    margin-top: 10px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.success {
+    background: #22c55e;
+    color: white;
+}
+
+.warning {
+    background: #f59e0b;
+    color: black;
+}
+
+.danger {
+    background: #ef4444;
+    color: white;
+}
+
+.score-btn {
+    padding: 5px 10px;
+    margin-left: 5px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th {
+    background: #334155;
+}
+
+th, td {
+    padding: 12px;
+    text-align: left;
+}
+
+tr:nth-child(even) {
+    background: rgba(255,255,255,.03);
+}
+
+.leader {
+    color: #fbbf24;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.answer-list li {
+    padding: 8px;
+    margin-bottom: 8px;
+    background: #334155;
+    border-radius: 8px;
+}
+
+.center {
+    text-align: center;
+}
     </style>
 </head>
 <body>
-<p>
-    Logged in as:
-    <strong>{{ player_name }}</strong>
-</p>
-
-<p>
-    Host:
-    <strong>{{ host }}</strong>
-</p>
+<div class="container">
 
 
-<h1>Room {{ room_id }}</h1>
+<div class="card center">
+    <h1>🎮 Guess The Game</h1>
 
-<h3>Round {{ round_no }}</h3>
+    <div class="room-code">
+        {{ room_id }}
+    </div>
+
+    <p>
+        Round {{ round_no }}
+    </p>
+
+    <p>
+        <span class="player-badge">
+            {{ player_name }}
+        </span>
+
+        {% if is_host %}
+        <span class="host-badge">
+            HOST
+        </span>
+        {% endif %}
+    </p>
+</div>
 
 {% if not revealed %}
 
-<div class="section">
+<div class="card">
+    <h3>Submit Your Guess</h3>
+
     <form method="post" action="/submit/{{ room_id }}">
         <input
             type="text"
             name="guess"
-            placeholder="Enter your guess"
+            placeholder="What game is it?"
             required>
 
-        <button type="submit">
+        <button class="primary">
             Submit Guess
         </button>
     </form>
@@ -87,7 +210,7 @@ HTML = """
 <div class="section">
     <h2>Submitted Answers</h2>
 
-    <ul>
+    <ul class="answer-list">
     {% for answer in answers %}
         <li>
             <strong>{{ answer["name"] }}</strong>
@@ -121,8 +244,34 @@ HTML = """
 
 <div class="section">
     <h3>Correct Answer:</h3>
-    <p><strong>{{ correct_answer }}</strong></p>
+    <div class="card center">
+    <h2>✅ Correct Answer</h2>
+    <h1>{{ correct_answer }}</h1>
 </div>
+</div>
+{% if last_results %}
+
+<div class="section">
+    <h2>Round Results</h2>
+
+    <table>
+        <tr>
+            <th>Player</th>
+            <th>Guess</th>
+            <th>Points Awarded</th>
+        </tr>
+
+        {% for result in last_results %}
+        <tr>
+            <td>{{ result.player }}</td>
+            <td>{{ result.guess }}</td>
+            <td>{{ result.points }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
+{% endif %}
 
 <div class="section">
    {% if is_host %}
@@ -139,47 +288,64 @@ HTML = """
 {% endif %}
 
 <div class="section">
-    <h2>Scoreboard</h2>
+    <h2>🏆 Leaderboard</h2>
 
     <table>
         <tr>
             <th>Player</th>
             <th>Score</th>
         </tr>
-
-       {% for player, score in scores %}
+{% for player, score in scores %}
 <tr>
-    <td>{{ player }}</td>
 
-   <td>
-    {{ "%.1f"|format(score) }}
+    <td>
+        {% if loop.index == 1 %}
+            🥇
+        {% elif loop.index == 2 %}
+            🥈
+        {% elif loop.index == 3 %}
+            🥉
+        {% endif %}
 
-    <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
-        <input type="hidden" name="player" value="{{ player }}">
-        <input type="hidden" name="delta" value="1">
-        <button>+1</button>
-    </form>
+        {{ player }}
+    </td>
 
-    <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
-        <input type="hidden" name="player" value="{{ player }}">
-        <input type="hidden" name="delta" value="0.5">
-        <button>+0.5</button>
-    </form>
+    <td>
+        {{ "%.1f"|format(score) }}
+    </td>
 
-    <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
-        <input type="hidden" name="player" value="{{ player }}">
-        <input type="hidden" name="delta" value="-0.5">
-        <button>-0.5</button>
-    </form>
+    <td>
 
-    {% if is_host %}
-    <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
-        <input type="hidden" name="player" value="{{ player }}">
-        <input type="hidden" name="delta" value="-1">
-        <button>-1</button>
-    </form>
-    {% endif %}
-</td>
+        {% if is_host %}
+
+        <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
+            <input type="hidden" name="player" value="{{ player }}">
+            <input type="hidden" name="delta" value="1">
+            <button class="success score-btn">+1</button>
+        </form>
+
+        <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
+            <input type="hidden" name="player" value="{{ player }}">
+            <input type="hidden" name="delta" value="0.5">
+            <button class="primary score-btn">+0.5</button>
+        </form>
+
+        <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
+            <input type="hidden" name="player" value="{{ player }}">
+            <input type="hidden" name="delta" value="-0.5">
+            <button class="warning score-btn">-0.5</button>
+        </form>
+
+        <form method="post" action="/change-score/{{ room_id }}" style="display:inline;">
+            <input type="hidden" name="player" value="{{ player }}">
+            <input type="hidden" name="delta" value="-1">
+            <button class="danger score-btn">-1</button>
+        </form>
+
+        {% endif %}
+
+    </td>
+
 </tr>
 {% endfor %}
     </table>
@@ -198,11 +364,26 @@ HTML = """
     </form>
 </div>
 {% endif %}
-
+</div>
 </body>
 </html>
 """
+def fuzzy_similarity(a, b):
+    return SequenceMatcher(
+        None,
+        a.lower().strip(),
+        b.lower().strip()
+    ).ratio()
 
+
+def semantic_similarity(a, b):
+    emb1 = model.encode([a])
+    emb2 = model.encode([b])
+
+    return cosine_similarity(
+        emb1,
+        emb2
+    )[0][0]
 
 @app.route("/", methods=["GET", "POST"])
 def home():
@@ -211,18 +392,22 @@ def home():
 
         player_name = request.form["name"].strip()
 
+        if player_name.lower() in ["shallow", "saneth", "san"]:
+            player_name += " pop"
+
         room_id = str(uuid.uuid4())[:6].upper()
 
         session["player_name"] = player_name
 
         rooms[room_id] = {
-            "answers": [],
-            "revealed": False,
-            "scores": {},
-            "correct_answer": None,
-            "round_no": 1,
-            "host": player_name
-        }
+    "answers": [],
+    "revealed": False,
+    "scores": {},
+    "correct_answer": None,
+    "round_no": 1,
+    "host": player_name,
+    "last_results": []
+}
 
         return redirect(f"/room/{room_id}")
 
@@ -272,6 +457,7 @@ def room(room_id):
         is_host=is_host,
         player_name=session["player_name"],
         host=room["host"],
+        last_results=room["last_results"],
     )
 
 
@@ -331,17 +517,53 @@ def score(room_id):
 
     room["correct_answer"] = correct_answer
 
+    room["last_results"] = []
+
     for answer in room["answers"]:
 
-        if (
-            answer["guess"].strip().lower()
-            ==
-            correct_answer.strip().lower()
-        ):
-           room["scores"][answer["name"]] = round(
-    room["scores"][answer["name"]] + 1.0,
-    1
-)
+        guess = answer["guess"]
+
+        points = 0.0
+
+        # Exact match
+        if guess.strip().lower() == correct_answer.strip().lower():
+            points = 1.0
+
+        else:
+
+            fuzzy = fuzzy_similarity(
+                guess,
+                correct_answer
+            )
+
+            semantic = semantic_similarity(
+                guess,
+                correct_answer
+            )
+
+            # Strong fuzzy match
+            if fuzzy >= 0.85:
+                points = 0.5
+
+            # Semantic match
+            elif semantic >= 0.80:
+                points = 0.75
+
+            elif semantic >= 0.70:
+                points = 0.5
+
+            elif semantic >= 0.60:
+                points = 0.25
+
+        room["scores"][answer["name"]] = round(
+            room["scores"][answer["name"]] + points,
+            2
+        )
+        room["last_results"].append({
+        "player": answer["name"],
+        "guess": guess,
+        "points": points
+        })
 
     return redirect(f"/room/{room_id}")
 
