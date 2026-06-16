@@ -2,8 +2,6 @@ from flask import Flask,session, request, render_template_string, redirect
 import uuid
 
 from difflib import SequenceMatcher
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 
 
 
@@ -12,7 +10,6 @@ app.secret_key = "some-random-secret"
 
 rooms = {}
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
 
 HTML = """
 <!DOCTYPE html>
@@ -376,14 +373,7 @@ def fuzzy_similarity(a, b):
     ).ratio()
 
 
-def semantic_similarity(a, b):
-    emb1 = model.encode([a])
-    emb2 = model.encode([b])
 
-    return cosine_similarity(
-        emb1,
-        emb2
-    )[0][0]
 
 @app.route("/", methods=["GET", "POST"])
 def home():

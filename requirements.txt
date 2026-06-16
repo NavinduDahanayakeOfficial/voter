@@ -1,5 +1,2 @@
 flask
 
-sentence-transformers
-scikit-learn
-torch
